@@ -387,10 +387,11 @@ def run_recipe(workspace, recipe_path):
         stages = [(stage, project["id"])]
         if dev_tools:
             stages.append((workspace.local / "staging/TiModTemplate.DevTools", "TiModTemplate.DevTools"))
-        for folder, mod_id in stages:
-            journal = workspace.deploy_folder(folder, mod_id)
+        def remember_deployment(journal):
             session["deploymentJournals"].append(str(journal.relative_to(workspace.root)))
             write_json(evidence / "session.json", session)
+        for folder, mod_id in stages:
+            workspace.deploy_folder(folder, mod_id, on_prepared=remember_deployment)
         enable_test_mods(workspace, ["TerraInvictaMCP", project["id"]] + (["TiModTemplate.DevTools"] if dev_tools else []))
         client = MCP(workspace, evidence)
         session["launchRequested"] = True
@@ -421,6 +422,9 @@ def run_recipe(workspace, recipe_path):
             context[step["id"]] = data
             result["steps"].append({"id": step["id"], "status": "passed", "data": data})
             write_json(evidence / "result.json", result)
+        health = client.call("observe")
+        assert_expected(health, {"/bridge": "up", "/version/crashed": False})
+        result["finalHealth"] = health
         result["status"] = "passed"
     except Exception as error:
         result["status"] = "failed"

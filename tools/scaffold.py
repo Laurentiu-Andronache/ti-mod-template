@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -56,13 +57,18 @@ def contained(root, relative):
     if relative.is_absolute() or any(p in ("..", ".") or ":" in p for p in relative.parts):
         raise WorkflowError(f"Unsafe relative path: {relative}")
     result = root / relative
+    def linked(path):
+        try:
+            return path.is_symlink() or bool(getattr(path.lstat(), "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+        except FileNotFoundError:
+            return False
     for path in (root, *root.parents):
-        if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+        if linked(path):
             raise WorkflowError(f"Refusing linked directory: {path}")
     for path in (result, *result.parents):
         if path == root:
             break
-        if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+        if linked(path):
             raise WorkflowError(f"Refusing linked path: {path}")
     if not result.resolve().is_relative_to(root.resolve()):
         raise WorkflowError(f"Path escapes {root}: {result}")
@@ -544,7 +550,7 @@ class Workspace:
                    "EntryMethod": "TiModTemplate.DevTools.Main.Load"})
         return stage
 
-    def deploy_folder(self, source, mod_id):
+    def deploy_folder(self, source, mod_id, on_prepared=None):
         require_game_closed()
         game = self.game()
         loader_config(game)
@@ -554,7 +560,7 @@ class Workspace:
         source = Path(source)
         if not (source / "ModInfo.json").is_file():
             raise WorkflowError(f"Missing staged manifest: {source}")
-        return deploy_transaction(self.root, source, target)
+        return deploy_transaction(self.root, source, target, on_prepared=on_prepared)
 
     def package(self):
         project = self.project()
@@ -573,7 +579,7 @@ class Workspace:
         return output
 
 
-def deploy_transaction(workspace, source, target):
+def deploy_transaction(workspace, source, target, on_prepared=None):
     """Write-ahead journal. Backups remain outside the game and survive process interruption."""
     workspace, source, target = Path(workspace), Path(source), Path(target)
     transactions = workspace / ".local/deployments"
@@ -610,13 +616,18 @@ def deploy_transaction(workspace, source, target):
         if before:
             backup.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(destination, backup)
-        journal["files"][name] = {"before": before, "after": digest(incoming[name]) if name in incoming else None}
+        journal["files"][name] = {"before": before, "after": digest(incoming[name]) if name in incoming else None,
+                                  "temporary": name + ".ti-" + uuid.uuid4().hex + ".tmp"}
     write_json(journal_path, journal)
+    if on_prepared:
+        on_prepared(journal_path)
     for name, entry in journal["files"].items():
         destination = contained(target, name)
         if name in incoming:
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(incoming[name], destination)
+            temporary = contained(target, entry["temporary"])
+            shutil.copy2(incoming[name], temporary)
+            os.replace(temporary, destination)
         elif destination.exists():
             destination.unlink()
     journal["status"] = "installed"
@@ -649,9 +660,20 @@ def restore_transaction(path, game, remove_generated=False):
         destination = contained(target, name)
         if entry["before"] is not None:
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(contained(path.parent / "before", name), destination)
+            # Older journals lack a temporary name. Persist one before restoring,
+            # so recovery itself can be interrupted safely.
+            if "temporary" not in entry:
+                entry["temporary"] = name + ".ti-" + uuid.uuid4().hex + ".tmp"
+                write_json(path, journal)
+            temporary = contained(target, entry["temporary"])
+            shutil.copy2(contained(path.parent / "before", name), temporary)
+            os.replace(temporary, destination)
         elif destination.exists():
             destination.unlink()
+        if entry.get("temporary"):
+            temporary = contained(target, entry["temporary"])
+            if temporary.exists():
+                temporary.unlink()
     if target.exists() and remove_generated:
         for generated in target.rglob("*"):
             if not generated.is_file():

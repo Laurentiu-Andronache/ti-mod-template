@@ -111,7 +111,8 @@ namespace TiModTemplate.DevTools
         private static JObject Dispatch(JObject request)
         {
             string op = (string)request["op"];
-            if (op == "status") return new JObject { ["version"] = "0.1.0", ["enabled"] = enabled };
+            if (op == "status") return new JObject { ["version"] = "0.1.0", ["enabled"] = enabled,
+                ["initialized"] = GameControl.initialized, ["crashed"] = GameControl.handlingException };
             if (op == "roots" || op == "tree" || op == "inspect" || op == "click" || op == "fixture")
                 return UiProbe.Execute(request);
             if (op == "tests" || op == "run")

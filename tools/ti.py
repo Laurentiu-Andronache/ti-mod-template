@@ -72,11 +72,13 @@ def main():
             loader_config(game)
             workspace.submodules()
             current = workspace.fingerprint(game)
+            changed = {k: v for k, v in current.items() if k != "lastLogVersionLines"} != {
+                k: v for k, v in config["fingerprint"].items() if k != "lastLogVersionLines"}
             print(json.dumps({"gameDir": str(game), "python": sys.executable, "dotnet": config["dotnet"],
-                              "fingerprint": current, "changedSinceSetup": current != config["fingerprint"]}, indent=2))
+                              "fingerprint": current, "changedSinceSetup": changed}, indent=2))
             workspace.dotnet(["--version"])
             workspace.dotnet(["tool", "run", "ilspycmd", "--version"])
-            if current != config["fingerprint"]:
+            if changed:
                 raise WorkflowError("Installation fingerprint changed. Review compatibility, rerun setup, rebuild, and repeat affected runtime tests.")
         elif args.command == "init":
             workspace.initialize(args.id, args.name, args.kind, args.author, args.assets)

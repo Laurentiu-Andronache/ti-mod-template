@@ -23,7 +23,9 @@ namespace TiModTemplate.DevTools
 
         private static string Remember(GameObject gameObject)
         {
-            if (Handles.Count >= 512) Handles.Clear();
+            foreach (var pair in Handles)
+                if (pair.Value == gameObject) return pair.Key;
+            if (Handles.Count >= 512) throw new InvalidOperationException("UI handle budget reached; request roots again.");
             string handle = Guid.NewGuid().ToString("N");
             Handles.Add(handle, gameObject);
             return handle;
@@ -58,9 +60,14 @@ namespace TiModTemplate.DevTools
         internal static JObject Execute(JObject request)
         {
             string op = (string)request["op"];
-            if (op == "fixture") return Fixture((string)request["action"] ?? "status");
+            if (op == "fixture")
+            {
+                if (Handles.Count > 509) Handles.Clear();
+                return Fixture((string)request["action"] ?? "status");
+            }
             if (op == "roots")
             {
+                if (Handles.Count > 256) Handles.Clear();
                 var roots = new JArray();
                 for (int i = 0; i < SceneManager.sceneCount && roots.Count < 128; i++)
                 {
@@ -109,6 +116,7 @@ namespace TiModTemplate.DevTools
             if (op == "tree")
             {
                 int limit = Math.Max(1, Math.Min(200, (int?)request["limit"] ?? 100));
+                if (Handles.Count + limit > 512) Handles.Clear();
                 int depth = Math.Max(0, Math.Min(8, (int?)request["depth"] ?? 3));
                 var queue = new Queue<KeyValuePair<Transform, int>>();
                 queue.Enqueue(new KeyValuePair<Transform, int>(root.transform, 0));

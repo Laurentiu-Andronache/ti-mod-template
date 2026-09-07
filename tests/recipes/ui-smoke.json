@@ -5,7 +5,7 @@
   "steps": [
     { "id": "campaign", "tool": "campaign_new", "arguments": { "scenario": "ModernScenario", "faction": "ResistCouncil", "options": ["VeryLightSolarSystem"] } },
     { "id": "ready", "tool": "observe", "arguments": {}, "expect": { "/campaign": true }, "waitSeconds": 300 },
-    { "id": "helper", "tool": "dev", "arguments": { "op": "status" }, "expect": { "/ok": true } },
+    { "id": "helper", "tool": "dev", "arguments": { "op": "status" }, "expect": { "/ok": true, "/initialized": true, "/crashed": false }, "waitSeconds": 300 },
     { "id": "created", "tool": "dev", "arguments": { "op": "fixture", "action": "create" }, "expect": { "/ok": true, "/clicks": 0 } },
     { "id": "tree", "tool": "dev", "arguments": { "op": "tree", "handle": "${created/root/handle}" }, "expect": { "/ok": true } },
     { "id": "before", "tool": "screenshot", "arguments": {} },
