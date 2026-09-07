@@ -6,6 +6,7 @@
     { "id": "observed", "tool": "observe", "arguments": {} },
     { "id": "merge", "tool": "modcheck", "arguments": { "mod": "${mod}", "check": "merge" }, "expect": { "/summary/status": "PASS" } },
     { "id": "references", "tool": "modcheck", "arguments": { "mod": "${mod}", "check": "refs" }, "expect": { "/summary/status": "PASS" } },
-    { "id": "text", "tool": "modcheck", "arguments": { "mod": "${mod}", "check": "locale" }, "expect": { "/summary/status": "PASS" } }
+    { "id": "text", "tool": "modcheck", "arguments": { "mod": "${mod}", "check": "locale" }, "expect": { "/summary/status": "PASS" } },
+    { "id": "screen", "tool": "screenshot", "arguments": {} }
   ]
 }
