@@ -20,7 +20,9 @@ class Fixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="TI scaffold test ")
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # Windows CI may expose TEMP through an 8.3 alias (RUNNER~1).
+        # Match Workspace's canonical paths in fixtures and mocked game roots.
+        self.root = Path(self.temp.name).resolve()
         (self.root / "tools").mkdir()
         shutil.copy2(ROOT / "tools/dependencies.lock.json", self.root / "tools/dependencies.lock.json")
         shutil.copytree(ROOT / "templates", self.root / "templates")
