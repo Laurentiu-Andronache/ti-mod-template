@@ -17,7 +17,7 @@ Those are examples of workflows, not features silently added to every new mod. S
 Prerequisites: Windows x64, Git, Python 3.11+, a local Terra Invicta installation, and Unity Mod Manager configured for the game. Close the game before setup deploys files. The bootstrap downloads a verified, local .NET SDK when needed; Visual Studio is optional.
 
 ```powershell
-git clone <your-repository-url> ti-my-mod
+git clone https://github.com/Laurentiu-Andronache/ti-mod-template.git ti-my-mod
 cd ti-my-mod
 .\ti.ps1 setup
 ```
