@@ -332,6 +332,8 @@ def restore_session(workspace, evidence, stop=False):
         subprocess.run(["reg.exe", "delete", r"HKCU\Software\Pavonis Interactive\TerraInvicta", "/f"], capture_output=True)
         if record.get("playerPrefsExisted"):
             run(["reg.exe", "import", evidence / "before/playerprefs.reg"], capture=True)
+    for path in reversed(record.get("deploymentJournals", [])):
+        restore_transaction(contained(workspace.root, path), workspace.game(), remove_generated=True)
     record["status"] = "restored"
     write_json(evidence / "session.json", record)
 
@@ -433,8 +435,6 @@ def run_recipe(workspace, recipe_path):
         try:
             collect_logs(workspace, evidence / "logs")
             restore_session(workspace, evidence, stop=True)
-            for path in reversed(session.get("deploymentJournals", [])):
-                restore_transaction(contained(workspace.root, path), workspace.game())
         except Exception as error:
             result["recoveryError"] = str(error)
             result["status"] = "failed"

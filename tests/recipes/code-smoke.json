@@ -4,6 +4,8 @@
   "devTools": true,
   "steps": [
     { "id": "observed", "tool": "observe", "arguments": {} },
+    { "id": "campaign", "tool": "campaign_new", "arguments": { "scenario": "ModernScenario", "faction": "ResistCouncil", "options": ["VeryLightSolarSystem"] } },
+    { "id": "ready", "tool": "observe", "arguments": {}, "expect": { "/campaign": true }, "waitSeconds": 300 },
     { "id": "helper", "tool": "dev", "arguments": { "op": "status" }, "expect": { "/ok": true, "/enabled": true } },
     { "id": "probe", "tool": "dev", "arguments": { "op": "run", "mod": "${mod}", "name": "Probe" }, "expect": { "/ok": true, "/result/passed": true } },
     { "id": "screen", "tool": "screenshot", "arguments": {} }

@@ -33,6 +33,18 @@ Recipes are small JSON files stored outside deployable content. This example is 
   "devTools": true,
   "steps": [
     {
+      "id": "campaign",
+      "tool": "campaign_new",
+      "arguments": { "scenario": "ModernScenario", "faction": "ResistCouncil", "options": ["VeryLightSolarSystem"] }
+    },
+    {
+      "id": "ready",
+      "tool": "observe",
+      "arguments": {},
+      "expect": { "/campaign": true },
+      "waitSeconds": 300
+    },
+    {
       "id": "probe",
       "tool": "dev",
       "arguments": { "op": "run", "mod": "${mod}", "name": "Probe" },
@@ -52,7 +64,7 @@ Each tool call, resolved arguments, assertions, screenshot, package hash, instal
 
 ## Development helper
 
-Build/deploy with `-DevTools` or use a recipe with `devTools: true`. The separate UMM helper registers `ti_dev` when the game terminal exists, including terminals initialized before or after the helper. It unregisters only its own registration when disabled.
+Build/deploy with `-DevTools` or use a recipe with `devTools: true`. **A loaded campaign is required by MCP's console bridge**, even for the harmless starter probe. The code/UI smoke recipes create a disposable campaign and wait for it to load. The separate UMM helper registers `ti_dev` when the game terminal exists, including terminals initialized before or after the helper. It unregisters only its own registration when disabled.
 
 The wire format uses one base64-encoded UTF-8 JSON request as the command's argument. This avoids TI's comma-separated console argument parsing. It emits a tagged JSON result, `TI_DEV_RESULT:…`, which the runner extracts. Every response has `ok`; failures have `error`. A command failing with `ok:false` can be an explicitly asserted negative test.
 

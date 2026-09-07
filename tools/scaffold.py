@@ -600,7 +600,8 @@ def deploy_transaction(workspace, source, target):
         if actual != expected:
             raise WorkflowError(f"Deployed file was changed externally: {path}. Preserve/reconcile it before continuing.")
     journal_dir = transactions / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8])
-    journal = {"schemaVersion": 1, "target": str(target), "status": "installing", "files": {}}
+    journal = {"schemaVersion": 1, "target": str(target), "status": "installing", "files": {},
+               "existingFiles": sorted(p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file())}
     journal_path = journal_dir / "manifest.json"
     for name in sorted(names):
         destination = contained(target, name)
@@ -624,7 +625,7 @@ def deploy_transaction(workspace, source, target):
     return journal_path
 
 
-def restore_transaction(path, game):
+def restore_transaction(path, game, remove_generated=False):
     path = Path(path)
     journal = read_json(path)
     if journal["status"] == "restored":
@@ -651,6 +652,17 @@ def restore_transaction(path, game):
             shutil.copy2(contained(path.parent / "before", name), destination)
         elif destination.exists():
             destination.unlink()
+    if target.exists() and remove_generated:
+        for generated in target.rglob("*"):
+            if not generated.is_file():
+                continue
+            name = generated.relative_to(target).as_posix()
+            if name not in journal.get("existingFiles", []) and name not in journal["files"]:
+                contained(target, name)
+                archive = contained(path.parent / "generated", name)
+                archive.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(generated, archive)
+                generated.unlink()
     if target.exists():
         for folder in sorted((p for p in target.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
             contained(target, folder.relative_to(target))
