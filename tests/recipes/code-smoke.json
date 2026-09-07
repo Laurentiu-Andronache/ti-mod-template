@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "description": "Checks the generated starter's conditional Harmony probe; replace with feature assertions as the mod evolves.",
+  "devTools": true,
+  "steps": [
+    { "id": "observed", "tool": "observe", "arguments": {} },
+    { "id": "helper", "tool": "dev", "arguments": { "op": "status" }, "expect": { "/ok": true, "/enabled": true } },
+    { "id": "probe", "tool": "dev", "arguments": { "op": "run", "mod": "${mod}", "name": "Probe" }, "expect": { "/ok": true, "/result/passed": true } },
+    { "id": "screen", "tool": "screenshot", "arguments": {} }
+  ]
+}

@@ -1,0 +1,10 @@
+[submodule "references/ti-mods"]
+	path = references/ti-mods
+	url = https://github.com/Laurentiu-Andronache/ti-mods.git
+[submodule "tools/TerraInvictaMCP"]
+	path = tools/TerraInvictaMCP
+	url = https://github.com/Laurentiu-Andronache/TerraInvictaMCP.git
+[submodule "references/TIShipModdingFramework"]
+	path = references/TIShipModdingFramework
+	url = https://github.com/UNNRazorback/TIShipModdingFramework.git
+	update = none

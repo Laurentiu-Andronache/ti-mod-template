@@ -1,0 +1,15 @@
+.local/
+artifacts/
+**/bin/
+**/obj/
+**/__pycache__/
+*.user
+*.suo
+.codex/config.toml
+.mcp.json
+assets/UnityProject/Library/
+assets/UnityProject/Temp/
+assets/UnityProject/Logs/
+assets/UnityProject/UserSettings/
+assets/UnityProject/Obj/
+

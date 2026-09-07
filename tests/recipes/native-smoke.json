@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "description": "Checks this mod's native merge, references and localization at the main menu. Add in-campaign feature assertions separately.",
+  "devTools": false,
+  "steps": [
+    { "id": "observed", "tool": "observe", "arguments": {} },
+    { "id": "merge", "tool": "modcheck", "arguments": { "mod": "${mod}", "check": "merge" }, "expect": { "/summary/status": "PASS" } },
+    { "id": "references", "tool": "modcheck", "arguments": { "mod": "${mod}", "check": "refs" }, "expect": { "/summary/status": "PASS" } },
+    { "id": "text", "tool": "modcheck", "arguments": { "mod": "${mod}", "check": "locale" }, "expect": { "/summary/status": "PASS" } }
+  ]
+}

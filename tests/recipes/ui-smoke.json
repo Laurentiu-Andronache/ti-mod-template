@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "description": "Exercises actual Unity Button dispatch, disabled-state refusal, teardown, reopening, and stale handles using an isolated development canvas.",
+  "devTools": true,
+  "steps": [
+    { "id": "helper", "tool": "dev", "arguments": { "op": "status" }, "expect": { "/ok": true } },
+    { "id": "created", "tool": "dev", "arguments": { "op": "fixture", "action": "create" }, "expect": { "/ok": true, "/clicks": 0 } },
+    { "id": "tree", "tool": "dev", "arguments": { "op": "tree", "handle": "${created/root/handle}" }, "expect": { "/ok": true } },
+    { "id": "before", "tool": "screenshot", "arguments": {} },
+    { "id": "clicked", "tool": "dev", "arguments": { "op": "click", "handle": "${created/button/handle}" }, "expect": { "/ok": true, "/invoked": true, "/fixtureClicks": 1 } },
+    { "id": "disabled", "tool": "dev", "arguments": { "op": "click", "handle": "${created/disabledButton/handle}" }, "expect": { "/ok": false } },
+    { "id": "counter", "tool": "dev", "arguments": { "op": "fixture", "action": "status" }, "expect": { "/ok": true, "/clicks": 1 } },
+    { "id": "destroyed", "tool": "dev", "arguments": { "op": "fixture", "action": "destroy" }, "expect": { "/ok": true, "/exists": false } },
+    { "id": "reopened", "tool": "dev", "arguments": { "op": "fixture", "action": "create" }, "expect": { "/ok": true, "/clicks": 0 } },
+    { "id": "stale", "tool": "dev", "arguments": { "op": "click", "handle": "${created/button/handle}" }, "expect": { "/ok": false } },
+    { "id": "again", "tool": "dev", "arguments": { "op": "click", "handle": "${reopened/button/handle}" }, "expect": { "/ok": true, "/fixtureClicks": 1 } },
+    { "id": "cleanup", "tool": "dev", "arguments": { "op": "fixture", "action": "destroy" }, "expect": { "/ok": true, "/exists": false } }
+  ]
+}

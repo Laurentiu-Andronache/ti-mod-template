@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "sdk": {
+    "version": "8.0.424",
+    "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0.424/dotnet-sdk-8.0.424-win-x64.zip",
+    "sha512": "1787ab90635c2950672ed7c6507b000e1b212ea7d9a22fcef37061344d37c64d4c4eda12b8742601eff5b45c8736485b31c55613892f240c300190e4e88a58b0"
+  },
+  "runtimeUnityEditor": {
+    "version": "6.3",
+    "url": "https://github.com/ManlyMarco/RuntimeUnityEditor/releases/download/v6.3/RuntimeUnityEditor.UMM_v6.3.zip",
+    "sha256": "d95409f01b96da1d637587b0a0b18845abd7cc7a41561627d9c3fb0395d95919"
+  },
+  "submodules": {
+    "references/ti-mods": { "url": "https://github.com/Laurentiu-Andronache/ti-mods.git", "commit": "e0c91fb3cea08878a39e99ec201231688a043803", "required": true },
+    "tools/TerraInvictaMCP": { "url": "https://github.com/Laurentiu-Andronache/TerraInvictaMCP.git", "commit": "3f338b67b010fca17edc0f4f27cd33d1f35851f7", "required": true },
+    "references/TIShipModdingFramework": { "url": "https://github.com/UNNRazorback/TIShipModdingFramework.git", "commit": "85fa1cd1149e0b383881d30eb7dceceb52c5b211", "required": false }
+  }
+}
