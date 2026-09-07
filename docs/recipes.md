@@ -26,6 +26,9 @@ If forced fixtures bypass a prerequisite, verify that prerequisite separately. C
 
 ## Add a 30-influence recruitment button
 
+See the [fingerprint-specific UI example](ui-testing-example.md) for actual tab
+activation, native cost notation, transaction failures and save-removal checks.
+
 Clarify what "advisor" means in the intended request: a councilor candidate, a hired councilor, or a different game object. Establish which faction pays, where the generated character appears, whether the pool/capacity changes, and whether there is a cooldown or limit.
 
 Inspect the recruitment controller while its tab is open. Use DevTools `roots`/`tree`/`inspect` and screenshots to locate the current root, button prototype and text components. Trace creation, tab changes, refresh and teardown in the installed assembly. Inspect the game's own councilor generation and recruitment-pool insertion path, influence spending, bookkeeping and refresh notifications.

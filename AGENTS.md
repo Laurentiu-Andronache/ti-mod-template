@@ -62,6 +62,7 @@ Prefer game operations over direct assignment when changing state. A resource de
 - Guard patch and UI callbacks so a diagnostic or unexpected destroyed object cannot crash the game. Report relevant failures with the loader logger; do not spam each frame.
 - Make enable, registration, screen setup and cleanup repeatable. Handle already-initialized terminals and screens. Remove only listeners/objects/registrations owned by this mod.
 - Inspect actual UI roots/components. Reuse compatible game controls, then review copied listeners, controller collections, anchors, scaling, text, scroll bounds and input behavior.
+- Display every newly added in-game cost as `[resource icon] [amount]`, using the appropriate native resource icon and the game's formatting helpers (for example, `TIUtilities.InlineResourceStr(FactionResource.Money)` followed by a space and the amount). Apply this to controls, tooltips, and dialogs; verify the icon renders correctly with the UI's font/sprite assets. Keep the displayed amount consistent with affordability checks and the actual charge.
 - Reacquire state and UI after campaign or screen changes. Unpatching does not undo data already written to templates, caches or saves; document restart requirements.
 - Keep tests in `DevelopmentTests.cs` behind `TI_MOD_TESTS`. Development methods return structured JSON; see the starter and [testing interface](docs/testing.md). Production behavior must not depend on the development helper.
 

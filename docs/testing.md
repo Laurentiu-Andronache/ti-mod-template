@@ -8,6 +8,10 @@ Before claiming the feature works, test the behavior the user requested, its fai
 
 ## Running recipes
 
+For exploratory work using the same recovery lifecycle, see
+[interactive sessions](interactive-testing.md). For a fingerprint-specific UI
+investigation, see the [worked UI example](ui-testing-example.md).
+
 ```powershell
 .\ti.ps1 test -Offline
 .\ti.ps1 test -Recipe code-smoke
@@ -21,9 +25,40 @@ Runtime recipes require the game closed and MCP deployed by setup. They snapshot
 
 The runner captures the game PID, executable path and start time after its launch request. On completion or failure it stops only that owned process, archives newly created saves, restores original saves/settings, and reverses this recipe's mod/helper deployments. The separately deployed MCP setup stays installed until `restore` reverses it.
 
-An interrupted process leaves a recoverable `session.json`. Close the game and run `restore -Session <run-folder>`, then plain `restore` if deployment recovery is also needed. If original backup hashes do not match, recovery refuses instead of inventing replacement data.
+An interrupted process leaves a recoverable `session.json`. Run
+`restore -Session <run-folder>` from its owning clone; recovery stops only the
+recorded matching game process. An active interactive worker must be finished
+first. If ownership is missing or another game is running, close that game
+yourself before retrying. Then use plain `restore` if setup deployment recovery
+is also needed. Damaged original backups are refused.
+
+Shutdown, log collection and restoration are attempted independently. A diagnostic
+failure still fails the run but cannot skip restoration. `result.json` retains
+the original error, each `cleanupErrors` entry and `recoveryStatus`; when recovery
+is required it includes the exact recovery command. If result writing itself
+fails, the combined result is printed to stderr and the session journal remains
+the recovery authority. A machine-local installation lock prevents two clones
+from testing the same installation concurrently or bypassing an unfinished run.
 
 ## Recipe format
+
+Four options are independent. `configuration` is `Debug` or `Release`;
+`modTests` controls `TI_MOD_TESTS`; `devTools` deploys the external helper;
+`deployMod` controls project deployment. Omitted options preserve legacy recipes:
+configuration is Debug with `devTools:true`, otherwise Release; `modTests` defaults
+to `devTools`; `deployMod` defaults to true. Explicit values must have the right
+types. For production testing use all three explicit values:
+
+```json
+{"schemaVersion":1,"configuration":"Release","modTests":false,"devTools":true,"deployMod":true,"steps":[]}
+```
+
+`deployMod:false` skips the project build and journals temporary removal of its
+installed folder, including settings. DLL/metadata absence and runtime mod
+listing are checked before accepting the session. A renamed duplicate install
+is refused. Recovery restores the original project installation; unrelated mods
+retain their enabled state. Use this only for saves whose removal behavior the
+mod promises, such as changes using vanilla saved types.
 
 Recipes are small JSON files stored outside deployable content. This example is executable against an initialized code starter:
 
@@ -72,6 +107,20 @@ Each tool call, resolved arguments, assertions, screenshot, package hash, instal
 Campaign initialization does not mean the desired screen is visible: an intro cinematic or prompt can still cover it. Inspect the screenshot and current hierarchy, then use the relevant player-facing close/continue action before asserting a game screen. A black cinematic frame must not be reported as successful visual verification.
 
 ## Development helper
+
+The helper can inspect production builds with no mod test methods. Its `tests`
+and `run` operations require `modTests:true`; its UI operations do not.
+
+Keep custom results compact: return counts, IDs and the few values asserted, then
+request a separate observation for details. Tree traversal is already bounded;
+inspect a narrower child instead of embedding whole screens in a custom result.
+The pinned MCP server at commit `3f338b67b010fca17edc0f4f27cd33d1f35851f7`
+clips serialized result text above 160,000 characters and appends an explicit
+truncation suffix. This boundary was reproduced with its formatter and observed
+in the archived oversized response; it is characters of the serialized MCP
+result, not a byte budget for a custom test. The client reports this as truncation,
+distinguishes malformed JSON from an absent marker, and retains raw evidence.
+Partial JSON never counts as a successful result. No new wire limit is imposed.
 
 Build/deploy with `-DevTools` or use a recipe with `devTools: true`. **A loaded campaign is required by MCP's console bridge**, even for the harmless starter probe. The code/UI smoke recipes create a disposable campaign and wait for it to load. The separate UMM helper registers `ti_dev` when the game terminal exists, including terminals initialized before or after the helper. It unregisters only its own registration when disabled.
 

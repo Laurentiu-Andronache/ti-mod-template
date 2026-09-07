@@ -34,10 +34,19 @@ class MCP:
         self.sequence = 0
         threading.Thread(target=self._read, daemon=True).start()
         threading.Thread(target=self._errors, daemon=True).start()
-        self.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
-                               "clientInfo": {"name": "ti-mod-template", "version": "0.1.0"}})
-        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
-        self.proc.stdin.flush()
+        try:
+            self.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                   "clientInfo": {"name": "ti-mod-template", "version": "0.1.0"}})
+            self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
+            self.proc.stdin.flush()
+        except BaseException:
+            # Assignment to Session.client has not happened yet; avoid orphaning
+            # the stdio server when its initialization or handshake fails.
+            try:
+                self.close()
+            except BaseException:
+                pass
+            raise
 
     def _read(self):
         try:
@@ -80,6 +89,8 @@ class MCP:
     def call(self, tool, arguments=None):
         result = self.rpc("tools/call", {"name": tool, "arguments": arguments or {},
                                        "_meta": {"progressToken": str(self.sequence + 1)}})
+        if self.evidence:
+            write_json(self.evidence / f"{self.sequence:03d}-{tool}-raw.json", result)
         texts = []
         for index, item in enumerate(result.get("content", [])):
             if item.get("type") == "text":
@@ -107,39 +118,58 @@ class MCP:
     def dev(self, request):
         payload = base64.b64encode(json.dumps(request).encode("utf-8")).decode("ascii")
         result = self.call("console", {"line": "ti_dev " + payload})
-        def strings(value):
-            if isinstance(value, str):
-                yield value
-            elif isinstance(value, dict):
-                for child in value.values():
-                    yield from strings(child)
-            elif isinstance(value, list):
-                for child in value:
-                    yield from strings(child)
-        found = []
-        for text in strings(result):
-            for line in text.splitlines():
-                if "TI_DEV_RESULT:" in line:
-                    remainder = line.split("TI_DEV_RESULT:", 1)[1]
-                    try:
-                        found.append(json.JSONDecoder().raw_decode(remainder)[0])
-                    except ValueError:
-                        pass
-        if not found:
-            raise WorkflowError("No structured ti_dev result. Confirm DevTools is enabled and the console command registered.")
-        # Negative tests intentionally inspect ok:false instead of treating transport success as feature success.
-        return found[-1]
+        try:
+            return parse_dev_result(result)
+        except WorkflowError as error:
+            # Standalone dev calls also retain failures, even outside a session.
+            folder = self.evidence or self.workspace.local / "diagnostics" / uuid.uuid4().hex
+            raw = folder / f"{self.sequence:03d}-dev-response.json"
+            write_json(raw, result)
+            raise WorkflowError(f"{error} Raw response: {raw}") from error
 
     def close(self):
         if self.proc.poll() is None:
-            self.proc.stdin.close()
             try:
+                self.proc.stdin.close()
                 self.proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                self.proc.kill()
-                self.proc.wait(timeout=5)
+                pass
+            finally:
+                if self.proc.poll() is None:
+                    self.proc.kill()
+                    self.proc.wait(timeout=5)
         if self.evidence and self.stderr:
             (self.evidence / "mcp-stderr.log").write_text("".join(self.stderr), encoding="utf-8")
+
+
+def parse_dev_result(result):
+    def strings(value):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict):
+            for child in value.values():
+                yield from strings(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from strings(child)
+    texts = list(strings(result))
+    if any("...[truncated" in text for text in texts):
+        raise WorkflowError("Truncated ti_dev response from MCP; request a narrower diagnostic (fewer fields or a smaller tree).")
+    found = []
+    for text in texts:
+        for line in text.splitlines():
+            if "TI_DEV_RESULT:" not in line:
+                continue
+            try:
+                value = json.loads(line.split("TI_DEV_RESULT:", 1)[1].strip())
+                if not isinstance(value, dict) or type(value.get("ok")) is not bool:
+                    raise ValueError("expected an object with boolean ok")
+                found.append(value)
+            except ValueError as error:
+                raise WorkflowError(f"Malformed or incomplete TI_DEV_RESULT JSON: {error}. Request a narrower diagnostic.") from error
+    if not found:
+        raise WorkflowError("Absent TI_DEV_RESULT marker. Confirm DevTools is enabled and the console command registered.")
+    return found[-1]
 
 
 def json_pointer(value, pointer):
@@ -295,12 +325,12 @@ def restore_session(workspace, evidence, stop=False):
     record = read_json(evidence / "session.json")
     if record["status"] == "restored":
         return
+    if Path(record["gameDir"]).resolve() != workspace.game():
+        raise WorkflowError("Runtime journal belongs to another game installation")
     if stop:
         stop_owned_game(record)
     else:
         require_game_closed()
-    if Path(record["gameDir"]).resolve() != workspace.game():
-        raise WorkflowError("Runtime journal belongs to another game installation")
     saves = Path(record["savesDir"])
     for entry in record["files"]:
         backup = contained(evidence, entry["backup"])
@@ -352,101 +382,58 @@ def collect_logs(workspace, destination):
     return destination
 
 
+def finish_session(workspace, evidence, result, client=None):
+    """Diagnostics must never gate recovery, nor replace the original failure."""
+    errors = result.setdefault("cleanupErrors", [])
+    for phase, action in (
+        ("mcpShutdown", lambda: client.close() if client else None),
+        ("logCollection", lambda: collect_logs(workspace, evidence / "logs")),
+        ("restoration", lambda: restore_session(workspace, evidence, stop=True)),
+    ):
+        try:
+            action()
+            if phase == "restoration":
+                result["recoveryStatus"] = "restored"
+        except BaseException as error:
+            errors.append({"phase": phase, "error": str(error), "type": type(error).__name__})
+            if phase == "restoration":
+                result["recoveryStatus"] = "required"
+                result["recoveryCommand"] = f'./ti.ps1 restore -Session "{evidence.name}"'
+    if errors:
+        result["status"] = "failed"
+    try:
+        write_json(evidence / "result.json", result)
+    except BaseException as error:
+        result["status"] = "failed"
+        errors.append({"phase": "resultWrite", "error": str(error), "type": type(error).__name__})
+    if errors:
+        print(json.dumps(result, ensure_ascii=True), file=sys.stderr, flush=True)
+    return result
+
+
 def run_recipe(workspace, recipe_path):
+    from sessions import evidence_folder, run_session, session_options, validate_command
     recipe = read_json(recipe_path)
     if recipe.get("schemaVersion") != 1 or not isinstance(recipe.get("steps"), list):
         raise WorkflowError("Recipe requires schemaVersion:1 and steps array")
+    session_options(recipe)
     ids = [step.get("id") for step in recipe["steps"]]
     if any(not isinstance(i, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", i) for i in ids) or len(ids) != len(set(ids)):
         raise WorkflowError("Recipe step IDs must be unique alphanumeric identifiers")
-    require_game_closed()
-    project = workspace.project()
-    dev_tools = bool(recipe.get("devTools", False))
-    evidence = workspace.local / "runs" / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8])
-    evidence.mkdir(parents=True)
-    session = snapshot_session(workspace, evidence)
+    for step in recipe["steps"]:
+        validate_command(step)
+    evidence = evidence_folder(workspace)
     write_json(evidence / "recipe.json", recipe)
-    result = {"status": "running", "recipe": str(recipe_path), "steps": [],
-              "fingerprint": workspace.fingerprint(workspace.game())}
-    client = None
-    watching = threading.Event()
-    owner_lock = threading.Lock()
-    def note_owner():
-        while not watching.is_set():
-            found = [p for p in windows_processes() if p.get("Path") and
-                     Path(p["Path"]).resolve() == (workspace.game() / "TerraInvicta.exe").resolve()]
-            if len(found) == 1:
-                with owner_lock:
-                    session["owner"] = found[0]
-                    write_json(evidence / "session.json", session)
-                return
-            watching.wait(2)
-    try:
-        stage = workspace.build("Debug" if dev_tools else "Release", dev_tools)
-        result["package"] = str(stage)
-        result["packageFiles"] = {p.relative_to(stage).as_posix(): digest(p) for p in stage.rglob("*") if p.is_file()}
-        session["deploymentJournals"] = []
-        stages = [(stage, project["id"])]
-        if dev_tools:
-            stages.append((workspace.local / "staging/TiModTemplate.DevTools", "TiModTemplate.DevTools"))
-        def remember_deployment(journal):
-            session["deploymentJournals"].append(str(journal.relative_to(workspace.root)))
-            write_json(evidence / "session.json", session)
-        for folder, mod_id in stages:
-            workspace.deploy_folder(folder, mod_id, on_prepared=remember_deployment)
-        enable_test_mods(workspace, ["TerraInvictaMCP", project["id"]] + (["TiModTemplate.DevTools"] if dev_tools else []))
-        client = MCP(workspace, evidence)
-        session["launchRequested"] = True
-        session["status"] = "running"
-        write_json(evidence / "session.json", session)
-        observer = threading.Thread(target=note_owner, daemon=True)
-        observer.start()
-        print(f"Starting disposable runtime test; evidence: {evidence}", flush=True)
-        client.call("game_start")
-        context = {"mod": project["id"], "run": evidence.name}
+    def steps(session):
+        session.result["recipe"] = str(recipe_path)
         for step in recipe["steps"]:
             print("Test step: " + step["id"], flush=True)
-            args = expand(step.get("arguments", {}), context)
-            if step.get("tool") in ("game_start", "game_stop"):
-                raise WorkflowError("Recipes do not own process lifecycle; use a separate recipe for restart tests.")
-            deadline = time.monotonic() + min(300, max(1, step.get("waitSeconds", 1)))
-            while True:
-                data = client.dev(args) if step["tool"] == "dev" else client.call(step["tool"], args)
-                try:
-                    assert_expected(data, expand(step.get("expect", {}), context))
-                    break
-                except WorkflowError:
-                    if step.get("waitSeconds", 1) <= 1 or time.monotonic() >= deadline:
-                        raise
-                    if step["tool"] not in ("observe", "query", "template", "localize") and not (step["tool"] == "dev" and args.get("op") in ("status", "inspect")):
-                        raise WorkflowError("Polling may only repeat read-only observation steps; mutations are never retried automatically.")
-                    time.sleep(2)
-            context[step["id"]] = data
-            result["steps"].append({"id": step["id"], "status": "passed", "data": data})
-            write_json(evidence / "result.json", result)
-        health = client.call("observe")
-        assert_expected(health, {"/bridge": "up", "/version/crashed": False})
-        result["finalHealth"] = health
-        result["status"] = "passed"
-    except Exception as error:
-        result["status"] = "failed"
-        result["error"] = str(error)
-        raise
-    finally:
-        watching.set()
-        if "observer" in locals():
-            observer.join(timeout=10)
-        if client:
-            client.close()
-        try:
-            collect_logs(workspace, evidence / "logs")
-            restore_session(workspace, evidence, stop=True)
-        except Exception as error:
-            result["recoveryError"] = str(error)
-            result["status"] = "failed"
-            print("Recovery required: " + str(error), flush=True)
-        write_json(evidence / "result.json", result)
+            response = session.execute(step)
+            if not response["ok"]:
+                raise WorkflowError(response["error"])
+    _, result = run_session(workspace, recipe, steps, evidence)
     if result["status"] != "passed":
-        raise WorkflowError("Test recovery failed; inspect " + str(evidence / "result.json"))
+        raise WorkflowError("Runtime test failed; inspect " + str(evidence / "result.json") +
+                            ("; " + result["recoveryCommand"] if "recoveryCommand" in result else ""))
     print(f"Runtime test passed; saves and settings restored. Evidence: {evidence}")
     return evidence

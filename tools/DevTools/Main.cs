@@ -122,7 +122,7 @@ namespace TiModTemplate.DevTools
                 Type tests = null;
                 foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
                     if (assembly.GetName().Name == mod) tests = assembly.GetType(mod + ".DevelopmentTests");
-                if (tests == null) throw new ArgumentException("No development test type; deploy a build made with -DevTools.");
+                if (tests == null) throw new ArgumentException("No development test type; compile the mod with -ModTests (recipe modTests:true). External DevTools alone does not add mod test hooks.");
                 var names = new JArray();
                 foreach (var method in tests.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly))
                     if (method.GetParameters().Length == 0 && method.ReturnType == typeof(string)) names.Add(method.Name);

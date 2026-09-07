@@ -40,9 +40,12 @@ def read_json(path):
 def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def digest(path, algorithm="sha256"):
@@ -485,7 +488,12 @@ class Workspace:
                         EntryMethod=project["id"] + ".Main.Load", Requirements=[])
         return info
 
-    def build(self, configuration="Release", dev_tools=False):
+    def build(self, configuration="Release", dev_tools=False, *, mod_tests=None):
+        if configuration not in ("Debug", "Release"):
+            raise WorkflowError("configuration must be Debug or Release")
+        if type(dev_tools) is not bool or (mod_tests is not None and type(mod_tests) is not bool):
+            raise WorkflowError("devTools and modTests must be booleans")
+        mod_tests = dev_tools if mod_tests is None else mod_tests
         project = self.project()
         game = self.game() if self.config_path.exists() else None
         files = self.validate_content(project, game)
@@ -512,7 +520,7 @@ class Workspace:
             ET.ElementTree(extra).write(extra_path, encoding="utf-8", xml_declaration=True)
             self.dotnet(["build", self.root / "src/Mod/Mod.csproj", "-c", configuration,
                          f"-p:TerraInvictaDir={game}", f"-p:ModId={project['id']}",
-                         f"-p:Version={project['version']}", f"-p:EnableModTests={str(dev_tools).lower()}",
+                         f"-p:Version={project['version']}", f"-p:EnableModTests={str(mod_tests).lower()}",
                          f"-p:ExtraReferencesFile={extra_path}", "--nologo"])
             output = self.root / f"src/Mod/bin/{configuration}/net48/{project['id']}.dll"
             shutil.copy2(output, stage / output.name)
@@ -526,6 +534,7 @@ class Workspace:
                 shutil.copy2(self.root / name, stage / name)
         write_json(stage.parent / f"{project['id']}.build.json",
                    {"project": project, "configuration": configuration, "devTools": dev_tools,
+                    "modTests": mod_tests if project["kind"] != "Native" else False,
                     "files": {p.relative_to(stage).as_posix(): digest(p) for p in stage.rglob("*") if p.is_file()},
                     "fingerprint": self.fingerprint(game) if game else None})
         if dev_tools:
@@ -535,6 +544,7 @@ class Workspace:
 
     def build_devtools(self):
         stage = self.local / "staging/TiModTemplate.DevTools"
+        remove_tree(self.root, stage.relative_to(self.root))
         stage.mkdir(parents=True, exist_ok=True)
         references = ["mscorlib.dll", "System.dll", "System.Core.dll", "netstandard.dll",
                       "Assembly-CSharp.dll", "Assembly-CSharp-firstpass.dll", "Newtonsoft.Json.dll",
@@ -564,9 +574,9 @@ class Workspace:
 
     def package(self):
         project = self.project()
-        stage = self.build("Release", dev_tools=False)
+        stage = self.build("Release", dev_tools=False, mod_tests=False)
         record = read_json(stage.parent / f"{project['id']}.build.json")
-        if record["devTools"]:
+        if record.get("modTests", record.get("devTools", False)) or record["configuration"] != "Release":
             raise WorkflowError("Development build cannot be packaged")
         output = self.root / "artifacts" / f"{project['id']}-{project['version']}.zip"
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -578,8 +588,20 @@ class Workspace:
         print(f"Release ZIP: {output} (SHA256 {digest(output)})")
         return output
 
+    def remove_mod(self, mod_id, on_prepared=None):
+        """Temporarily remove a whole project folder through an ordinary journal."""
+        require_game_closed()
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", mod_id):
+            raise WorkflowError("Invalid mod ID")
+        empty = self.local / "empty-removal-source"
+        empty.mkdir(parents=True, exist_ok=True)
+        if any(empty.iterdir()):
+            raise WorkflowError("Removal source must be empty")
+        target = contained(self.game(), "Mods/Enabled/" + mod_id)
+        return deploy_transaction(self.root, empty, target, on_prepared=on_prepared, remove_all=True)
 
-def deploy_transaction(workspace, source, target, on_prepared=None):
+
+def deploy_transaction(workspace, source, target, on_prepared=None, *, remove_all=False):
     """Write-ahead journal. Backups remain outside the game and survive process interruption."""
     workspace, source, target = Path(workspace), Path(source), Path(target)
     transactions = workspace / ".local/deployments"
@@ -599,6 +621,10 @@ def deploy_transaction(workspace, source, target, on_prepared=None):
     for name in incoming:
         contained(source, name)
     names = set(incoming) | set(owned)
+    if remove_all:
+        if incoming:
+            raise WorkflowError("Removal transaction cannot install files")
+        names.update(p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file())
     # Do not silently overwrite edits made after a previous deployment.
     for name, expected in owned.items():
         path = contained(target, name)
@@ -608,6 +634,9 @@ def deploy_transaction(workspace, source, target, on_prepared=None):
     journal_dir = transactions / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8])
     journal = {"schemaVersion": 1, "target": str(target), "status": "installing", "files": {},
                "existingFiles": sorted(p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file())}
+    if remove_all:
+        journal["removedFolder"] = target.exists()
+        journal["existingDirectories"] = [p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_dir()]
     journal_path = journal_dir / "manifest.json"
     for name in sorted(names):
         destination = contained(target, name)
@@ -630,10 +659,22 @@ def deploy_transaction(workspace, source, target, on_prepared=None):
             os.replace(temporary, destination)
         elif destination.exists():
             destination.unlink()
+    if remove_all:
+        prune_empty_directories(target)
     journal["status"] = "installed"
     write_json(journal_path, journal)
     print(f"Deployed {target.name}; recovery journal: {journal_path}")
     return journal_path
+
+
+def prune_empty_directories(target):
+    if target.exists():
+        for folder in sorted((p for p in target.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+            contained(target, folder.relative_to(target))
+            if not any(folder.iterdir()):
+                folder.rmdir()
+        if not any(target.iterdir()):
+            target.rmdir()
 
 
 def restore_transaction(path, game, remove_generated=False):
@@ -685,12 +726,10 @@ def restore_transaction(path, game, remove_generated=False):
                 archive.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(generated, archive)
                 generated.unlink()
-    if target.exists():
-        for folder in sorted((p for p in target.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
-            contained(target, folder.relative_to(target))
-            if not any(folder.iterdir()):
-                folder.rmdir()
-        if not any(target.iterdir()):
-            target.rmdir()
+    prune_empty_directories(target)
+    if journal.get("removedFolder"):
+        target.mkdir(parents=True, exist_ok=True)
+        for name in journal.get("existingDirectories", []):
+            contained(target, name).mkdir(parents=True, exist_ok=True)
     journal["status"] = "restored"
     write_json(path, journal)

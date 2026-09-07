@@ -36,6 +36,9 @@ def parser():
         command = commands.add_parser(name, help="Build/stage the mod" if name == "build" else "Build and deploy the mod while game is closed")
         command.add_argument("-Configuration", "--configuration", choices=["Debug", "Release"], default="Release")
         command.add_argument("-DevTools", "--dev-tools", action="store_true")
+        hooks = command.add_mutually_exclusive_group()
+        hooks.add_argument("-ModTests", "--mod-tests", action="store_true", default=None)
+        hooks.add_argument("-NoModTests", "--no-mod-tests", dest="mod_tests", action="store_false")
     test = commands.add_parser("test", help="Run offline tests or a disposable runtime recipe")
     group = test.add_mutually_exclusive_group(required=True)
     group.add_argument("-Offline", "--offline", action="store_true")
@@ -49,8 +52,25 @@ def parser():
     call.add_argument("-Json", "--json", default="{}")
     dev = commands.add_parser("dev", help="Send a structured development-helper request via MCP console")
     dev.add_argument("-Json", "--json", required=True)
+    session = commands.add_parser("session", help="Owned interactive testing with durable command IDs")
+    actions = session.add_subparsers(dest="action", required=True)
+    for name in ("start", "command", "finish", "worker"):
+        action = actions.add_parser(name)
+        if name != "start":
+            action.add_argument("-Session", "--session", required=True)
+        if name in ("start", "command"):
+            inputs = action.add_mutually_exclusive_group(required=name == "command")
+            inputs.add_argument("-Json", "--json")
+            inputs.add_argument("-File", "--file", help="JSON file; - reads stdin")
     commands.add_parser("help")
     return cli
+
+
+def inspection_spec(assembly, requested_type=None, il=False):
+    if il:
+        return Path(assembly).stem + ".assembly.il.txt", ["-il"], "assembly-il"
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", requested_type or "types") + ".cs.txt"
+    return name, ["-t", requested_type] if requested_type else ["-l", "c"], "type-csharp" if requested_type else "class-index"
 
 
 def main():
@@ -92,20 +112,24 @@ def main():
             folder = workspace.local / "inspection" / fingerprint[:16]
             folder.mkdir(parents=True, exist_ok=True)
             options = ["tool", "run", "ilspycmd", "--disable-updatecheck", "-r", managed]
-            options += ["-t", args.type] if args.type else ["-l", "c"]
-            if args.il:
-                options.append("-il")
+            name, selection, scope = inspection_spec(args.assembly, args.type, args.il)
+            options += selection
             options.append(assembly)
             output = workspace.dotnet(options, capture=True)
-            name = re.sub(r"[^A-Za-z0-9_.-]", "_", args.type or "types") + (".il.txt" if args.il else ".cs.txt")
             path = folder / name
             path.write_text(output, encoding="utf-8")
-            write_json(folder / "source.json", {"assembly": str(assembly), "sha256": fingerprint, "ilspycmd": "9.1.0.7988"})
+            metadata = {"assembly": str(assembly), "sha256": fingerprint, "ilspycmd": "9.1.0.7988",
+                        "scope": scope, "requestedType": args.type, "output": name,
+                        "arguments": [str(option) for option in options]}
+            write_json(folder / "source.json", metadata)
+            write_json(folder / (name + ".source.json"), metadata)
+            if args.il:
+                print("Assembly-wide IL; requested type is recorded as search context only.")
             print(path)
         elif args.command in ("build", "deploy"):
             if args.command == "deploy":
                 require_game_closed()
-            stage = workspace.build(args.configuration, args.dev_tools)
+            stage = workspace.build(args.configuration, args.dev_tools, mod_tests=args.mod_tests)
             if args.command == "deploy":
                 workspace.deploy_folder(stage, workspace.project()["id"])
                 if args.dev_tools:
@@ -127,18 +151,47 @@ def main():
             from runtime import collect_logs
             print(collect_logs(workspace, workspace.local / "logs" / time.strftime("%Y%m%d-%H%M%S")))
         elif args.command == "restore":
-            require_game_closed()
             if args.session:
                 from scaffold import contained
                 from runtime import restore_session
-                restore_session(workspace, contained(workspace.local / "runs", args.session))
+                from sessions import InstallationLease
+                evidence = contained(workspace.local / "runs", args.session)
+                lease = InstallationLease(workspace, recovery=evidence)
+                try:
+                    restore_session(workspace, evidence, stop=True)
+                    result = read_json(evidence / "result.json") if (evidence / "result.json").exists() else {"status": "interrupted"}
+                    if result.get("status") == "running":
+                        result["status"] = "interrupted"
+                    result.update(recoveryStatus="restored", recoveredBy="restore -Session")
+                    result.pop("recoveryCommand", None)
+                    write_json(evidence / "result.json", result)
+                    print("Session restored: " + str(evidence))
+                finally:
+                    lease.close()
             else:
+                require_game_closed()
                 pending = [p for p in (workspace.local / "runs").glob("*/session.json") if read_json(p)["status"] != "restored"]
                 if pending:
                     raise WorkflowError("Restore the unfinished runtime session first: -Session " + pending[0].parent.name)
                 for path in sorted((workspace.local / "deployments").glob("*/manifest.json"), reverse=True):
                     restore_transaction(path, workspace.game())
                 print("Recorded deployments restored; unrelated files and mod settings retained.")
+        elif args.command == "session":
+            from scaffold import contained
+            from sessions import start_interactive, submit_command, interactive_worker
+            if args.action in ("start", "command"):
+                value = (json.load(sys.stdin) if args.file == "-" else read_json(args.file)) if args.file else json.loads(args.json or "{}")
+                if not isinstance(value, dict):
+                    raise WorkflowError("Session input must be a JSON object")
+            if args.action == "start":
+                result = start_interactive(workspace, value)
+            elif args.action == "worker":
+                result = interactive_worker(workspace, contained(workspace.local / "runs", args.session))
+            else:
+                result = submit_command(workspace, args.session, value if args.action == "command" else {"id": "session_finish", "tool": "finish"})
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            if result.get("ok") is False or result.get("status") == "failed":
+                return 1
         elif args.command in ("call", "dev"):
             from runtime import MCP
             client = MCP(workspace)

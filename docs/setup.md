@@ -82,6 +82,12 @@ With the game closed:
 
 Plain `restore` reverses this clone's deployment journals in reverse order, including replaced MCP files. `-Session` recovers saves/profile/UMM settings from an unfinished runtime run. Recover the session first if both are outstanding. Generated test saves are archived with the run's evidence. Do not delete `.local` until its outstanding journals have been restored or intentionally retained.
 
+Session recovery can stop its recorded game process itself after checking PID,
+executable path and start time. A live interactive worker retains the installation
+lock: use `session finish -Session <id>` for it. After a worker interruption,
+`restore -Session <id>` performs recovery; it never resumes queued mutations.
+See [interactive testing](interactive-testing.md) for the complete workflow.
+
 The test runner stops only its recorded game PID with matching path and start time. A pre-existing game is left alone. If process ownership cannot be established, recovery waits for you to close the game instead of guessing which process to terminate.
 
 After a game update, `doctor` reports changed assembly fingerprints. Check loader injection with UMM, rerun setup, inspect changed hooks, rebuild, reconnect MCP and repeat the affected runtime recipes.

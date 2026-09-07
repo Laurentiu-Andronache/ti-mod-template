@@ -43,6 +43,14 @@ Initialization creates one mod and refuses to overwrite existing content. `Nativ
 
 The first command lists classes. Output paths include the source DLL hash under `.local/inspection/`. Search the index before guessing namespaces: some TI types are global, others are namespaced. `-Assembly` selects another DLL directly under Managed. Add relevant dependencies, callers, signature and timing notes to a feature design without copying reconstructed game code into Git.
 
+`-IL` emits **assembly-wide IL**, including when `-Type` is supplied. With the
+pinned ILSpyCmd 9.1.0.7988, type selection does not filter IL. Output is named
+`Assembly-CSharp.assembly.il.txt`; its `.source.json` sidecar records the requested
+type separately from the actual scope, arguments and assembly fingerprint. The
+assembly-wide file can be large. Use focused searches such as
+`rg -n 'TICouncilorState::' .local/inspection/<hash>/Assembly-CSharp.assembly.il.txt`,
+then read the surrounding declaring method. Without `-IL`, `-Type` still selects C#.
+
 For data, compare the shipped template, scenario overlays and actual consuming code. Use the running engine's MCP `template` and `localize` results to check effective values. The original files on disk need not change when a native patch succeeds.
 
 ## Build and deploy
@@ -51,11 +59,19 @@ For data, compare the shipped template, scenario overlays and actual consuming c
 .\ti.ps1 build
 .\ti.ps1 build -Configuration Debug -DevTools
 .\ti.ps1 deploy -Configuration Debug -DevTools
+.\ti.ps1 build -Configuration Release -DevTools -NoModTests
+.\ti.ps1 build -Configuration Debug -ModTests
 ```
 
 Build validates content and stages only the manifest, mod DLL when applicable, native/localization files, explicitly listed authored assets, and license notices. It recreates staging so obsolete files cannot leak into the package. Code compiles for `net48` using local game/Unity/UMM/Harmony references. Never distribute their copied binaries.
 
-`-DevTools` enables the conditional development test type and builds a separate console/UI helper. Ordinary Release builds do not contain that test type. Deployment requires the game to be closed; DLL replacement takes effect after restart.
+`-DevTools` builds the separate console/UI helper (and deploys it for `deploy`).
+`-ModTests` and `-NoModTests` independently control conditional mod assertions.
+For compatibility, omitting both retains the old behavior: `-DevTools` also
+enables mod tests. A production test uses explicit
+`-Configuration Release -DevTools -NoModTests`. Debug alone does not imply test
+hooks. Build evidence records both choices. Deployment requires the game closed;
+restart loads new DLLs.
 
 The validator enforces a flat JSON layout, strict JSON with no duplicate keys, record arrays with unique `dataName`, object-shaped GlobalConfig, and recognized template filenames when the game is present. It cannot infer every cross-template reference or prove gameplay semantics. For a new custom template type defined by code, extend the filename validation deliberately after documenting its type and loader registration; do not bypass the check by inventing a vanilla filename.
 

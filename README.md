@@ -47,6 +47,11 @@ Choose `Native` for data/assets, `Code` for C# behavior, or `Hybrid` for both. `
 
 Runtime recipes build and deploy the mod, start a disposable game session, collect evidence, stop the process they started, and restore existing saves and settings. New test saves are retained under the run's evidence directory. Author feature-specific recipes before claiming a mod works.
 
+[Interactive sessions](docs/interactive-testing.md) use the same recovery lifecycle
+with explicit session and command IDs. Build configuration, mod test hooks,
+external DevTools and project deployment are independent recipe options, including
+Release-plus-helper and mod-absent save tests.
+
 ## Where things live
 
 | Location | Purpose |
