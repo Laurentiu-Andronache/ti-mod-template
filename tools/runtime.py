@@ -268,7 +268,9 @@ def enable_test_mods(workspace, mod_ids):
         raise WorkflowError("The profile records a previous native-mod loading failure. Diagnose that failure before running a new recipe.")
     if not re.search(r"(?m)^UseMods:(True|False)\s*$", text):
         raise WorkflowError("Unrecognized UseMods profile format; inspect TIPlayerProfileManager for this game build.")
-    profile.write_text(re.sub(r"(?m)^UseMods:(True|False)", "UseMods:True", text), encoding="utf-8")
+    # TI splits on LF and compares booleans verbatim. Windows CRLF turns
+    # "True" into "True\r" and silently disables native mods and other options.
+    profile.write_text(re.sub(r"(?m)^UseMods:(True|False)", "UseMods:True", text), encoding="utf-8", newline="\n")
 
 
 def stop_owned_game(record):
@@ -414,7 +416,7 @@ def run_recipe(workspace, recipe_path):
                     assert_expected(data, expand(step.get("expect", {}), context))
                     break
                 except WorkflowError:
-                    if time.monotonic() >= deadline:
+                    if step.get("waitSeconds", 1) <= 1 or time.monotonic() >= deadline:
                         raise
                     if step["tool"] not in ("observe", "query", "template", "localize") and not (step["tool"] == "dev" and args.get("op") in ("status", "inspect")):
                         raise WorkflowError("Polling may only repeat read-only observation steps; mutations are never retried automatically.")

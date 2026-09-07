@@ -45,6 +45,13 @@ Recipes are small JSON files stored outside deployable content. This example is 
       "waitSeconds": 300
     },
     {
+      "id": "initialized",
+      "tool": "dev",
+      "arguments": { "op": "status" },
+      "expect": { "/ok": true, "/initialized": true, "/crashed": false },
+      "waitSeconds": 300
+    },
+    {
       "id": "probe",
       "tool": "dev",
       "arguments": { "op": "run", "mod": "${mod}", "name": "Probe" },
@@ -60,7 +67,9 @@ Each step has a unique alphanumeric `id`, MCP `tool`, `arguments`, and optional 
 
 For an asynchronous load, add `waitSeconds` (maximum 300) to an observation/assertion step. Only `observe`, `query`, `template`, `localize`, and development `status`/`inspect` steps may be retried. Mutating calls are issued once; an uncertain result needs inspection, not an automatic duplicate action. Recipes cannot directly call `game_start`/`game_stop`; the runner owns lifecycle. Use separate recipes for application-restart tests.
 
-Each tool call, resolved arguments, assertions, screenshot, package hash, installation fingerprint, and final status is recorded in `.local/runs/<run-id>/`. Missing tool capabilities or recovery failures are failures with an explanation, never silent skips. These files contain local paths and game state: summarize/redact evidence before intentionally sharing it.
+Each tool call, resolved arguments, assertions, screenshot, package hash, installation fingerprint, and final status is recorded in `.local/runs/<run-id>/`. The runner also requires a responding bridge and no reported engine crash at the end. Missing tool capabilities or recovery failures are failures with an explanation, never silent skips. These files contain local paths and game state: summarize/redact evidence before intentionally sharing it.
+
+Campaign initialization does not mean the desired screen is visible: an intro cinematic or prompt can still cover it. Inspect the screenshot and current hierarchy, then use the relevant player-facing close/continue action before asserting a game screen. A black cinematic frame must not be reported as successful visual verification.
 
 ## Development helper
 
@@ -77,7 +86,7 @@ CLI example in an active test session:
 
 | Operation | Inputs and behavior |
 |---|---|
-| `status` | Reports helper version and enabled state |
+| `status` | Reports helper version, enabled state, campaign initialization and engine crash flag |
 | `roots` | Lists up to 128 loaded-scene roots and 128 canvases, including persistent UI |
 | `tree` | `handle`, optional `depth` (0–8) and `limit` (1–200); bounded hierarchy with names/components/text and handles |
 | `inspect` | `handle`; reads the current object, active and interactable state |
