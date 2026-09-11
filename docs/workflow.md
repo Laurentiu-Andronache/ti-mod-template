@@ -20,7 +20,7 @@ The descriptor generated at the root is the only identity source:
   "kind": "Hybrid",
   "author": "Author",
   "version": "0.1.0",
-  "description": "Describe the behavior.",
+  "description": "Describe the behavior.\n\nCreated using https://github.com/Laurentiu-Andronache/ti-mod-template",
   "native": { "LoadOrder": 0 },
   "requiredAssemblies": [],
   "packageFiles": []
@@ -32,6 +32,12 @@ Use dotted IDs containing identifier segments of letters/digits, starting with l
 `native` accepts `LoadOrder`, `ModURL`, `TemplatesToConcatArrays`, `TemplatesToReplaceArrays`, and `TemplatesToReplace`. Array settings are lists of exact filenames including `.json`. `requiredAssemblies` adds installed Managed-directory DLLs to the build with `Private=false`, for example `UnityEngine.UI.dll` and `Unity.TextMeshPro.dll`. `packageFiles` explicitly lists authored non-JSON/non-localization files, relative to `content/`.
 
 Initialization creates one mod and refuses to overwrite existing content. `Native` creates no C# project. `Code` and `Hybrid` create the same extensible UMM lifecycle starter; the distinction documents intent. Native builds can stage/package without the game or SDK, but require in-game verification before release.
+
+Every generated mod description ends with the standalone line
+`Created using https://github.com/Laurentiu-Andronache/ti-mod-template`.
+Initialization includes it in `mod.project.json`; build, deploy and package
+ensure it appears once at the end of `ModInfo.json`'s `Description`, including
+for existing projects. Keep the same final line in publication descriptions.
 
 ## Investigate
 

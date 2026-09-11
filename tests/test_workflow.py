@@ -54,14 +54,37 @@ class ProjectTests(Fixture):
                 self.workspace.initialize(identity, None, "Native", "Tests")
         self.assertFalse((self.root / "mod.project.json").exists())
 
+    def test_generated_descriptions_end_with_one_attribution(self):
+        attribution = "Created using https://github.com/Laurentiu-Andronache/ti-mod-template"
+        project = self.initialize()
+        self.assertEqual(project["description"], "Describe this mod's behavior.\n\n" + attribution)
+        for kind in ("Native", "Code", "Hybrid"):
+            for description, expected in (
+                ("Custom behavior.", "Custom behavior.\n\n" + attribution),
+                ("", attribution),
+                ("Custom behavior.\r\n\r\n" + attribution + "\r\n", "Custom behavior.\n\n" + attribution),
+                (attribution + "\nCustom behavior.\n" + attribution, "Custom behavior.\n\n" + attribution),
+            ):
+                with self.subTest(kind=kind, description=description):
+                    project.update(kind=kind, description=description)
+                    generated = self.workspace.manifest(project)["Description"]
+                    self.assertEqual(generated, expected)
+                    self.assertEqual(project["description"], description)
+                    project["description"] = generated
+                    self.assertEqual(self.workspace.manifest(project)["Description"], generated)
+
     def test_native_build_without_game_and_zip_allowlist(self):
         project = self.initialize("Native")
+        project["description"] = "Authored description without attribution."
+        write_json(self.root / "mod.project.json", project)
         write_json(self.root / "content/TITechTemplate.json", [{"dataName": "AdAstra", "researchCost": 2500}])
         with contextlib.redirect_stdout(io.StringIO()):
             package = self.workspace.package()
         with zipfile.ZipFile(package) as archive:
             self.assertEqual(set(archive.namelist()), {"Tests.Example/ModInfo.json", "Tests.Example/TITechTemplate.json"})
-            self.assertNotIn("Id", json.loads(archive.read("Tests.Example/ModInfo.json")))
+            manifest = json.loads(archive.read("Tests.Example/ModInfo.json"))
+            self.assertNotIn("Id", manifest)
+            self.assertEqual(manifest["Description"], project["description"] + "\n\nCreated using https://github.com/Laurentiu-Andronache/ti-mod-template")
 
     def test_stale_staging_files_do_not_enter_package(self):
         self.initialize("Native")

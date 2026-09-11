@@ -17,8 +17,18 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 
+MOD_ATTRIBUTION = "Created using https://github.com/Laurentiu-Andronache/ti-mod-template"
+
+
 class WorkflowError(Exception):
     pass
+
+
+def mod_description(description):
+    # Keep one attribution at the end, including after an existing description is edited.
+    body = "\n".join(line for line in description.splitlines()
+                     if line.strip() != MOD_ATTRIBUTION).rstrip()
+    return body + "\n\n" + MOD_ATTRIBUTION if body else MOD_ATTRIBUTION
 
 
 def read_json(path):
@@ -407,7 +417,7 @@ class Workspace:
         if any((self.root / p).exists() for p in ("mod.project.json", "src/Mod", "content")):
             raise WorkflowError("This clone already has a mod or authored content. Initialization will not overwrite it.")
         project = {"schemaVersion": 1, "id": mod_id, "name": name or mod_id, "kind": kind,
-                   "author": author, "version": "0.1.0", "description": "Describe this mod's behavior.",
+                   "author": author, "version": "0.1.0", "description": mod_description("Describe this mod's behavior."),
                    "native": {"LoadOrder": 0}, "requiredAssemblies": [], "packageFiles": []}
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+", mod_id):
             raise WorkflowError("Use a dotted ID such as Author.MyMod; only letters and digits in each segment.")
@@ -481,7 +491,8 @@ class Workspace:
             if key in native and (not isinstance(native[key], list) or
                                   any(not isinstance(n, str) or Path(n).name != n or not n.endswith(".json") for n in native[key])):
                 raise WorkflowError(f"{key} must be an array of exact JSON filenames")
-        info = {"Title": project["id"], "Author": project["author"], "Description": project["description"], **native}
+        info = {"Title": project["id"], "Author": project["author"],
+                "Description": mod_description(project["description"]), **native}
         if project["kind"] != "Native":
             info.update(Id=project["id"], DisplayName=project["name"], Version=project["version"],
                         ManagerVersion="0.33.0", AssemblyName=project["id"] + ".dll",
