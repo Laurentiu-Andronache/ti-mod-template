@@ -4,6 +4,7 @@
 [submodule "tools/TerraInvictaMCP"]
 	path = tools/TerraInvictaMCP
 	url = https://github.com/Laurentiu-Andronache/TerraInvictaMCP.git
+	branch = main
 [submodule "references/TIShipModdingFramework"]
 	path = references/TIShipModdingFramework
 	url = https://github.com/UNNRazorback/TIShipModdingFramework.git

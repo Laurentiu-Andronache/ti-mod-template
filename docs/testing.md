@@ -114,12 +114,15 @@ and `run` operations require `modTests:true`; its UI operations do not.
 Keep custom results compact: return counts, IDs and the few values asserted, then
 request a separate observation for details. Tree traversal is already bounded;
 inspect a narrower child instead of embedding whole screens in a custom result.
-The pinned MCP server at commit `3f338b67b010fca17edc0f4f27cd33d1f35851f7`
-clips serialized result text above 160,000 characters and appends an explicit
-truncation suffix. This boundary was reproduced with its formatter and observed
-in the archived oversized response; it is characters of the serialized MCP
-result, not a byte budget for a custom test. The client reports this as truncation,
-distinguishes malformed JSON from an absent marker, and retains raw evidence.
+The pinned MCP server at commit `c961ccc86028b3f494fdbf121c3b2b0082eea10d`
+replaces serialized JSON payloads above 160,000 characters with a complete JSON
+`response_too_large` diagnostic and sets `isError:true`. The diagnostic includes
+`textLength` and `textLimit`; the original payload is omitted. This counts
+serialized characters, including JSON escapes, before the surrounding MCP
+envelope. The client rejects the tool error and retains raw evidence. The handler
+has already run, so inspect current state before retrying a mutation. Narrow
+reads or return smaller custom results. The client also recognizes legacy
+truncation suffixes and distinguishes malformed JSON from an absent marker.
 Partial JSON never counts as a successful result. No new wire limit is imposed.
 
 Build/deploy with `-DevTools` or use a recipe with `devTools: true`. **A loaded campaign is required by MCP's console bridge**, even for the harmless starter probe. The code/UI smoke recipes create a disposable campaign and wait for it to load. The separate UMM helper registers `ti_dev` when the game terminal exists, including terminals initialized before or after the helper. It unregisters only its own registration when disabled.

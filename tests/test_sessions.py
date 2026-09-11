@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from test_workflow import Fixture
 from scaffold import WorkflowError, digest, read_json, restore_transaction, write_json
-from runtime import parse_dev_result, stop_owned_game
+from runtime import MCP, parse_dev_result, stop_owned_game
 from sessions import InstallationLease, Session, interactive_worker, session_options, submit_command, validate_command, verify_mod_absent
 from ti import inspection_spec, parser
 
@@ -246,7 +246,7 @@ class DiagnosticsTests(Fixture):
             with self.assertRaisesRegex(WorkflowError, "Malformed or incomplete"):
                 parse_dev_result({"output": ['TI_DEV_RESULT:{"ok":true}', "TI_DEV_RESULT:" + value]})
 
-    def test_pinned_server_truncation_is_not_success(self):
+    def test_pinned_server_oversized_response_is_not_success(self):
         # Exercise the pinned result formatter without running a server or a bridge.
         source = Path(__file__).resolve().parents[1] / "tools/TerraInvictaMCP/server/tools.py"
         text = source.read_text(encoding="utf-8")
@@ -259,7 +259,23 @@ class DiagnosticsTests(Fixture):
         limit = scope["TEXT_LIMIT"]
         result = scope["json_result"]({"output": ["TI_DEV_RESULT:" + json.dumps({"ok": True, "large": "x" * limit})]})
         raw = result["content"][0]["text"]
-        self.assertIn(f"truncated at {limit} chars", raw)
+        diagnostic = json.loads(raw)
+        self.assertTrue(result["isError"])
+        self.assertEqual(diagnostic["error"], "response_too_large")
+        self.assertEqual(diagnostic["textLimit"], limit)
+        self.assertGreater(diagnostic["textLength"], limit)
+        client = MCP.__new__(MCP)
+        client.sequence = 1
+        client.evidence = self.root / "evidence"
+        client.rpc = Mock(return_value=result)
+        with self.assertRaisesRegex(WorkflowError, "response_too_large"):
+            client.dev({"op": "status"})
+        client.rpc.assert_called_once()
+        self.assertEqual(read_json(client.evidence / "001-console-raw.json"), result)
+        self.assertEqual(read_json(client.evidence / "001-console.json")["data"], diagnostic)
+
+    def test_legacy_server_truncation_is_not_success(self):
+        raw = '{"output":["TI_DEV_RESULT:...\n...[truncated at 160000 chars -- narrow with limit/fields/contains]'
         with self.assertRaisesRegex(WorkflowError, "Truncated ti_dev"):
             parse_dev_result(raw)
 

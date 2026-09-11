@@ -12,7 +12,7 @@
   },
   "submodules": {
     "references/ti-mods": { "url": "https://github.com/Laurentiu-Andronache/ti-mods.git", "commit": "e0c91fb3cea08878a39e99ec201231688a043803", "required": true },
-    "tools/TerraInvictaMCP": { "url": "https://github.com/Laurentiu-Andronache/TerraInvictaMCP.git", "commit": "3f338b67b010fca17edc0f4f27cd33d1f35851f7", "required": true },
+    "tools/TerraInvictaMCP": { "url": "https://github.com/Laurentiu-Andronache/TerraInvictaMCP.git", "commit": "c961ccc86028b3f494fdbf121c3b2b0082eea10d", "required": true },
     "references/TIShipModdingFramework": { "url": "https://github.com/UNNRazorback/TIShipModdingFramework.git", "commit": "85fa1cd1149e0b383881d30eb7dceceb52c5b211", "required": false }
   }
 }

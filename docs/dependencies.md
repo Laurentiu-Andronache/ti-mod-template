@@ -22,6 +22,12 @@ git submodule update --init --checkout -- references/ti-mods tools/TerraInvictaM
 
 ## Updating a pin
 
+TerraInvictaMCP updates come from `main` in
+`Laurentiu-Andronache/TerraInvictaMCP`, as recorded in `.gitmodules`, rather than
+MeatBunny's upstream. Setup and CI still use the exact gitlink/lock revision;
+they do not automatically advance to a moving branch tip. To select a new MCP
+revision, fetch the fork's `main`, review it, and update both pins below.
+
 1. Read the selected dependency's release/commit notes and license. Review changed game/runtime requirements.
 2. Update its submodule checkout and gitlink, then the corresponding lock entry. Never point either TI fork at upstream incidentally.
 3. For downloads, record a specific versioned URL and digest from its release publisher; setup must not execute an unverified download.

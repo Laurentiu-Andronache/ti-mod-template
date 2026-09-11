@@ -41,6 +41,25 @@ The pinned handbook had passed its own validator and four offline tests during p
 
 ## Limits
 
+### MCP pin update (2026-09-11)
+
+Advanced TerraInvictaMCP from `3f338b67b010fca17edc0f4f27cd33d1f35851f7` to
+`c961ccc86028b3f494fdbf121c3b2b0082eea10d`, the observed `main` tip of
+`Laurentiu-Andronache/TerraInvictaMCP`. The change affects Python response
+formatting, its tests and the playbook; C# sources, assembly references and the
+MIT license are unchanged. `.gitmodules` now explicitly selects the fork's
+`main` for branch-based dependency updates.
+
+Validation: 44 scaffold tests and repository validation passed; 560 MCP tests
+passed; stdio self-check produced 10 clean JSON-RPC responses. The scaffold
+transport regression confirms an oversized result raises `response_too_large`,
+retains raw and parsed evidence, and sends the command only once. Legacy
+truncation rejection remains covered. `setup -NoDeploy` rebuilt/staged MCP and
+`doctor` passed with the Assembly-CSharp SHA-256 recorded above. No live selftest
+was rerun for this update; the earlier runtime evidence applies to the old pin.
+
+### General limits
+
 - Public CI runs game-independent validation only. It does not contain or obtain proprietary game assemblies.
 - The UI helper's pointer-event dispatch includes an interactability and center-raycast check, but is not a physical/OS pointer test.
 - RuntimeUnityEditor was downloaded/staged, not exercised interactively. Unity bundle authoring and ship assets were not tested in-game; a successful framework compile does not verify models, effects, tactical behavior or bundle compatibility.
